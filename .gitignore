@@ -1,0 +1,8 @@
+/runs
+/yolov5l.pt
+/yolov5m.pt
+/yolov5s.pt
+/yolov5s6.pt
+/yolov5x.pt
+/.idea
+/__pycache__
