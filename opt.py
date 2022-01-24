@@ -1,7 +1,7 @@
 agnostic_nms = False
 augment = False
-classes = [0, 1, 2]
-conf_thres = 0.4
+classes = [2]
+conf_thres = 0.5
 device = '0'
 imgsz = 640
 iou_thres = 0.5
@@ -17,3 +17,4 @@ dnn = False
 half = True
 visualize = False
 max_det = 100
+
