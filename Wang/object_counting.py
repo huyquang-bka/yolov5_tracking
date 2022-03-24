@@ -17,31 +17,26 @@
 #     a = (y1 - b) / x1
 #     return a, b
 
-class ObjectCounting():
-    def __init__(self, new_dict, old_dict, H_limit, W_limit):
-        self.new_dict = new_dict
-        self.old_dict = old_dict
-        self.H_limit = H_limit
-        self.W_limit = W_limit
 
-    def object_counting_up(self):
-        for key, value in self.old_dict.items():
-            try:
-                x_old, y_old = value
-                x_new, y_new = self.new_dict[key]
-                if y_new <= self.H_limit < y_old and self.W_limit[0] < x_new < self.W_limit[1]:
-                    return key
-            except:
-                pass
-        return None
+def object_counting_up_d3(old_dict, new_dict):
+    for key, value in old_dict.items():
+        try:
+            x_old, y_old, _, _, _ = value
+            x_new, y_new, _, _, _ = new_dict[key]
+            if y_new <= 58 <= y_old:
+                return key
+        except:
+            pass
+    return None
 
-    def object_counting_down(self):
-        for key, value in self.old_dict.items():
-            try:
-                x_old, y_old = value
-                x_new, y_new = self.new_dict[key]
-                if y_new > self.H_limit >= y_old and self.W_limit[0] < x_new < self.W_limit[1]:
-                    return key
-            except:
-                pass
-        return None
+
+def object_counting_down_d5(old_dict, new_dict):
+    for key, value in old_dict.items():
+        try:
+            x_old, y_old, _, _, _ = value
+            x_new, y_new, _, _, _ = new_dict[key]
+            if x_new >= 1060 > x_old and 200 <= y_new <= 239 + 325:
+                return key
+        except:
+            pass
+    return None

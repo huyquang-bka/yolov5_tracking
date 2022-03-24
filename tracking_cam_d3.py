@@ -1,12 +1,16 @@
 import os
 import sys
 from pathlib import Path
+
+import imutils
+
 import opt
 import time
-
 import cv2
 import torch
 import numpy as np
+
+from Wang.object_counting import object_counting_down_d5
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -21,7 +25,9 @@ from deep_sort_pytorch.utils.parser import get_config
 from deep_sort_pytorch.deep_sort import DeepSort
 
 from utils.general import xyxy2xywh
-from Wang.object_counting import ObjectCounting
+from Wang.check_slot import spot_dict_d3
+from Wang.draw_polygon import *
+from Wang.object_counting import object_counting_up_d3
 
 
 def compute_color_for_id(label):
@@ -44,6 +50,7 @@ deepsort = DeepSort(cfg.DEEPSORT.REID_CKPT,
 
 source = str(opt.source)
 # Load model
+print(opt.weights)
 device = select_device(opt.device)
 model = DetectMultiBackend(opt.weights, device=device, dnn=opt.dnn)
 stride, names, pt, jit, onnx = model.stride, model.names, model.pt, model.jit, model.onnx
@@ -58,7 +65,7 @@ dt, seen = [0.0, 0.0, 0.0], 0
 check = -1
 
 
-def detect(img0, H_limit):
+def detect(img0):
     im0 = img0.copy()
     img = letterbox(img0, opt.imgsz, stride=32, auto=True)[0]
     img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
@@ -80,18 +87,15 @@ def detect(img0, H_limit):
 
     # Process predictions
     for i, det in enumerate(pred):  # per image
+        spot_dict = {}
         if len(det):
             # Rescale boxes from img_size to im0 size
-            id_dict = {}
-            spot_dict = {}
             det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()
             # Write results
             xyxys, confs, clss = [], [], []
             for *xyxy, conf, cls in reversed(det):
                 label = '%s %.2f' % (names[int(cls)], conf)
                 x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
-                if y2 < H_limit:
-                    continue
                 xyxys.append([x1, y1, x2, y2])
                 confs.append(conf)
                 clss.append(cls)
@@ -104,24 +108,26 @@ def detect(img0, H_limit):
             if len(outputs) > 0:
                 for j, (output, conf) in enumerate(zip(outputs, confs)):
                     x1, y1, x2, y2 = output[0:4]
-                    x_center = (x1 + x2) // 2
-                    y_center = (y1 + y2) // 2
-                    id = output[4]
-                    id_dict[id] = [x_center, y_center]
-                    spot_dict[id] = [x1, y1, x2, y2]
-                    # cls = output[5]
+                    if y2 < 58:
+                        continue
+                    # x_center = (x1 + x2) // 2
+                    # y_center = (y1 + y2) // 2
+                    id = output[4] + 300
+                    # id_dict[id] = [x_center, y_center]
+                    spot_dict[id] = [x1, y1, x2, y2, id]
+                    # # cls = output[5]
                     # c = int(cls)  # integer class
                     # color = compute_color_for_id(id)
                     # cv2.rectangle(im0, (x1, y1), (x2, y2), color, 2)
                     # cv2.putText(im0, str(id), (x1 + 2, y1 - 2), cv2.FONT_HERSHEY_COMPLEX, 1, color, 2)
     try:
-        return im0, id_dict, spot_dict
+        return im0, spot_dict
     except:
-        return img0, None, None
+        return img0, None
 
 
 if __name__ == '__main__':
-    path = r"D:\Lab IC\dataThuVien_03122021\data_for_tracking\D5_7_1_2022_sang.mp4"
+    path = r"D:\cam_thu_vien\17_3_2022\D3\2022-03-17\D3_cut.mp4"
     cap = cv2.VideoCapture(path)
     # fourcc = 'mp4v'  # output video codec
     # fps = cap.get(cv2.CAP_PROP_FPS)
@@ -132,58 +138,101 @@ if __name__ == '__main__':
     rotate = 0
     frame = 0
     skip = 10  # seconds
-    old_id_dict = {}
-    count_obj_down = 0
-    count_obj_up = 0
-    H_limit = 302
-    W_limit = [0, 886]
-    id_match = {}
-    new_id = 0
+    old_dict = {}
+    lp_dict = {}
+    old_key_lp = []
+    old_key_d5 = []
+    count_missing_tracks = 0
+    final_dict = {}
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame)
     with torch.no_grad():
         while True:
             frame += 1
+            if frame % 5 != 0:
+                continue
+            spot_dict_d3_copy = spot_dict_d3.copy()
             t = time.time()
             ret, img0 = cap.read()
-            img0, id_dict, spot_dict = detect(img0, H_limit)
-            ob = ObjectCounting(id_dict, old_id_dict, H_limit, W_limit)
-            if id_dict is not None:
-                id_up = ob.object_counting_up()
-                id_down = ob.object_counting_down()
-                if id_up is not None:
-                    with open(f"id_cam2/{id_up}", "w+") as f:
+            img0 = cv2.resize(img0, dsize=(1280, 720))
+            H, W = img0.shape[:2]
+            img0, spot_dict = detect(img0)
+            alpha = 0.7
+            img0_copy = img0.copy()
+            new_key = list(set(spot_dict.keys()) - set(old_dict.keys()))
+            key_up = object_counting_up_d3(old_dict, spot_dict)
+            print(key_up)
+            if len(new_key) == 1:
+                x1, y1, x2, y2, id = spot_dict[new_key[0]]
+                if y2 > H - 100:
+                    old_key_lp = new_key
+                elif H - 100 > y2 > 58:
+                    old_key_d5 = new_key
+            old_dict = spot_dict
+            for key in lp_dict.keys():
+                if key not in spot_dict.keys():
+                    count_missing_tracks += 1
+                    break
+            if count_missing_tracks > 25 * 3:
+                for key in lp_dict.keys():
+                    if key not in spot_dict.keys():
+                        del lp_dict[key]
+                        break
+            if key_up is not None:
+                if key_up in lp_dict.keys():
+                    with open(fr"D3_up/{lp_dict[key_up]}", "w+") as f:
                         pass
-                if id_down is not None:
-                    new_id = id_down
-                    id_match[new_id] = 0
-            if len(os.listdir("id_cam1")) > 0 and new_id != 0:
-                id_match[new_id] = os.listdir("id_cam1")[0]
-                os.remove(f"id_cam1/{os.listdir('id_cam1')[0]}")
-                new_id = 0
-            old_id_dict = id_dict
-            list_key_match = list(id_match.keys())
+            if len(old_key_lp) == 1:
+                if len(os.listdir("LP")) > 0:
+                    lp_text = os.listdir("LP")[0]
+                    os.remove("LP/" + lp_text)
+                    lp_dict[id] = lp_text
+                    old_key_lp = []
+            if len(old_key_d5) == 1:
+                if len(os.listdir("D5_down")) > 0:
+                    d5_text = os.listdir("D5_down")[0]
+                    os.remove("D5/" + lp_text)
+                    lp_dict[id] = d5_text
+                    old_key_d5 = []
             for key, value in spot_dict.items():
-                color = compute_color_for_id(key)
-                x1, y1, x2, y2 = value
-                if key in list_key_match:
-                    key = id_match[key]
-                cv2.rectangle(img0, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(img0, str(key), (x1 + 2, y1 - 2), cv2.FONT_HERSHEY_COMPLEX, 1, color, 2)
-            cv2.line(img0, (0, H_limit), (1920, H_limit), (0, 255, 0), 2)
-            cv2.imshow("Image", img0)
+                x1, y1, x2, y2, id = value
+                x_center, y_center = (x1 + x2) // 2, (y1 + y2) // 2
+                if id in lp_dict.keys():
+                    id = lp_dict[id]
+                for k, v in spot_dict_d3_copy.items():
+                    x, y, w, h, status = v
+                    if x < x_center < x + w and y < y_center < y + h:
+                        spot_dict_d3_copy[k] = [x, y, w, h, 1]
+                if len(str(id)) < 6:
+                    cv2.rectangle(img0, (x1, y1 - 5), (x1 + 65, y1 + 25), (0, 0, 0), -1)
+                    cv2.putText(img0, str(str(id).upper()), (x1 + 5, y1 + 20), cv2.FONT_HERSHEY_COMPLEX, 1,
+                                (255, 255, 255), 2)
+                    continue
+                cv2.rectangle(img0, (x1, y1 - 5), (x1 + 200, y1 + 25), (0, 0, 0), -1)
+                cv2.putText(img0, str(str(id).upper()), (x1 + 5, y1 + 20), cv2.FONT_HERSHEY_COMPLEX, 1,
+                            (255, 255, 255), 2)
+            for k, v in spot_dict_d3_copy.items():
+                x, y, w, h, status = v
+                if status == 0:
+                    draw_polygon_d3(img0_copy, k, color=(0, 255, 0))
+                else:
+                    draw_polygon_d3(img0_copy, k, color=(0, 0, 255))
+
+            img0 = cv2.addWeighted(img0, alpha, img0_copy, 1 - alpha, 0)
+            cv2.imshow("Image", imutils.resize(img0, width=960))
             # vid_writer.write(img0)
             key = cv2.waitKey(1)
             print("FPS: ", 1 // (time.time() - t))
             if key == ord("q"):
                 break
-            # if key == ord("c"):
-            #     check = -check
-            # if key == ord("r"):
-            #     rotate += 1
-            # if key == ord("n"):
-            #     frame += skip * 25
-            #     cap.set(cv2.CAP_PROP_POS_FRAMES, frame)
-            # elif key == ord("p") and frame > skip * 25:
-            #     frame -= skip * 25
-            #     cap.set(cv2.CAP_PROP_POS_FRAMES, frame)
+            if key == ord("c"):
+                check = -check
+            if key == ord("r"):
+                rotate += 1
+            if key == ord("n"):
+                frame += skip * 25
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame)
+            elif key == ord("p") and frame > skip * 25:
+                frame -= skip * 25
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame)
             elif key == 32:
                 cv2.waitKey()
