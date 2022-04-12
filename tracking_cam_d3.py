@@ -154,6 +154,7 @@ if __name__ == '__main__':
             t = time.time()
             ret, img0 = cap.read()
             img0 = cv2.resize(img0, dsize=(1280, 720))
+            cv2.imwrite("main/D3_original.jpg", img0)
             H, W = img0.shape[:2]
             img0, spot_dict = detect(img0)
             alpha = 0.7
@@ -199,9 +200,10 @@ if __name__ == '__main__':
                 if id in lp_dict.keys():
                     id = lp_dict[id]
                 for k, v in spot_dict_d3_copy.items():
-                    x, y, w, h, status = v
+                    x, y, w, h, status, _ = v
                     if x < x_center < x + w and y < y_center < y + h:
-                        spot_dict_d3_copy[k] = [x, y, w, h, 1]
+                        spot_dict_d3_copy[k] = [x, y, w, h, 1, id]
+
                 if len(str(id)) < 6:
                     cv2.rectangle(img0, (x1, y1 - 5), (x1 + 65, y1 + 25), (0, 0, 0), -1)
                     cv2.putText(img0, str(str(id).upper()), (x1 + 5, y1 + 20), cv2.FONT_HERSHEY_COMPLEX, 1,
@@ -210,14 +212,19 @@ if __name__ == '__main__':
                 cv2.rectangle(img0, (x1, y1 - 5), (x1 + 200, y1 + 25), (0, 0, 0), -1)
                 cv2.putText(img0, str(str(id).upper()), (x1 + 5, y1 + 20), cv2.FONT_HERSHEY_COMPLEX, 1,
                             (255, 255, 255), 2)
+            f = open("main/D3_result.txt", "w+")
             for k, v in spot_dict_d3_copy.items():
-                x, y, w, h, status = v
+                x, y, w, h, status, id = v
+                if len(str(id)) < 6:
+                    id = ""
+                f.write(f"{k} 2 {status} {id}\n")
                 if status == 0:
                     draw_polygon_d3(img0_copy, k, color=(0, 255, 0))
                 else:
                     draw_polygon_d3(img0_copy, k, color=(0, 0, 255))
-
+            f.close()
             img0 = cv2.addWeighted(img0, alpha, img0_copy, 1 - alpha, 0)
+            cv2.imwrite("main/D3.jpg", img0)
             cv2.imshow("Image", imutils.resize(img0, width=960))
             # vid_writer.write(img0)
             key = cv2.waitKey(1)

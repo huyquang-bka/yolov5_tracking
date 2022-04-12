@@ -7,14 +7,14 @@ with open("spot_file/d5.txt", "r") as f:
         if not line.strip():
             continue
         x, y, w, h = list(map(int, line.split(",")))
-        spot_dict_d5[index + 1] = [x, y, w, h, 0]
+        spot_dict_d5[index + 1] = [x, y, w, h, 0, ""]
 
 with open("spot_file/d3.txt", "r") as f:
     for index, line in enumerate(f.readlines()):
         if not line.strip():
             continue
         x, y, w, h = list(map(int, line.split(",")))
-        spot_dict_d3[index + 1] = [x, y, w, h, 0]
+        spot_dict_d3[index + 1] = [x, y, w, h, 0, ""]
 
 
 def check_slot(spot_dict, id_dict, img):
